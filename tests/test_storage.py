@@ -5,7 +5,14 @@ from pathlib import Path
 from unittest import mock
 
 from quickdesk.commands import Command, CommandType
-from quickdesk.storage import CommandStore, StorageError, default_config_dir, load_settings, parse_commands
+from quickdesk.storage import (
+    CommandStore,
+    StorageError,
+    default_config_dir,
+    load_settings,
+    parse_commands,
+    visible_path,
+)
 
 DEFAULTS = [
     Command("builtin-github", "GitHub", "Code hosting", CommandType.URL, "https://github.com", True),
@@ -165,6 +172,35 @@ class SettingsTests(StorageTestCase):
         settings, warning = load_settings(self.settings_path, self.DEFAULTS)
         self.assertEqual(settings, self.DEFAULTS)
         self.assertIn("hotkey", warning)
+
+
+class VisiblePathTests(StorageTestCase):
+    """Microsoft Store Python: files created in %APPDATA% really live in the package folder."""
+
+    def setUp(self):
+        super().setUp()
+        self.appdata = self.dir / "Roaming"
+        self.local = self.dir / "Local"
+        env = mock.patch.dict("os.environ", {"APPDATA": str(self.appdata), "LOCALAPPDATA": str(self.local)})
+        env.start()
+        self.addCleanup(env.stop)
+        self.file = self.appdata / "QuickDesk" / "settings.json"
+        self.redirected = self.local / "Packages" / "Python.Test" / "LocalCache" / "Roaming" / "QuickDesk" / "settings.json"
+
+    def test_packaged_python_shows_redirected_location(self):
+        self.redirected.parent.mkdir(parents=True)
+        self.redirected.write_text("{}", encoding="utf-8")
+        with mock.patch("quickdesk.storage._package_family_name", return_value="Python.Test"):
+            self.assertEqual(visible_path(self.file), self.redirected)
+
+    def test_normal_python_keeps_path(self):
+        with mock.patch("quickdesk.storage._package_family_name", return_value=None):
+            self.assertEqual(visible_path(self.file), self.file)
+
+    def test_path_outside_appdata_is_unchanged(self):
+        other = self.dir / "elsewhere.json"
+        with mock.patch("quickdesk.storage._package_family_name", return_value="Python.Test"):
+            self.assertEqual(visible_path(other), other)
 
 
 class ConfigDirTests(unittest.TestCase):

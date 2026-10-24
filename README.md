@@ -120,6 +120,10 @@ Change the value and restart QuickDesk. Use one or more of `Ctrl`, `Alt`, `Shift
 a letter, a digit, `F1`–`F24`, `Space`, `Enter`, `Tab`, `Home`, `End`, `Insert` or `Delete`
 (for example `Ctrl+Alt+Space` or `Ctrl+Shift+F2`).
 
+> **Python from the Microsoft Store:** Windows silently redirects files that this Python creates in
+> `%APPDATA%` to `%LOCALAPPDATA%\Packages\PythonSoftwareFoundation.Python.3.XX_...\LocalCache\Roaming\QuickDesk`.
+> QuickDesk shows this real location in its messages, so you can find the file in Explorer.
+
 If the combination is already taken by another program (or QuickDesk is already running), Windows
 refuses it. QuickDesk then shows a message, keeps working without the hotkey and can be opened from the
 taskbar.

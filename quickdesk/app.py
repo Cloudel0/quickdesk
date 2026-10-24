@@ -21,7 +21,7 @@ from .commands import (
 )
 from .hotkey import DEFAULT_HOTKEY, GlobalHotkey, HotkeyError, foreground_window_is_ours
 from .search import search
-from .storage import CommandStore, StorageError, default_config_dir, load_settings
+from .storage import CommandStore, StorageError, default_config_dir, load_settings, visible_path
 
 DEFAULT_SETTINGS = {"hotkey": DEFAULT_HOTKEY}
 
@@ -195,7 +195,10 @@ class QuickDeskApp(ctk.CTk):
         except HotkeyError as error:
             message = f"{error}\n\nQuickDesk works without it; open it from the taskbar."
             if settings_path:
-                message += f'\nTo use another combination, change "hotkey" in {settings_path} and restart QuickDesk.'
+                message += (
+                    f'\nTo use another combination, change "hotkey" in {visible_path(settings_path)} '
+                    f"and restart QuickDesk."
+                )
             warnings.append(message)
             return None
         return global_hotkey
