@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox
 from typing import Callable
 
@@ -17,8 +19,11 @@ from .commands import (
     launch,
     merge_builtins,
 )
+from .hotkey import DEFAULT_HOTKEY, GlobalHotkey, HotkeyError, foreground_window_is_ours
 from .search import search
-from .storage import CommandStore, StorageError, default_config_dir
+from .storage import CommandStore, StorageError, default_config_dir, load_settings
+
+DEFAULT_SETTINGS = {"hotkey": DEFAULT_HOTKEY}
 
 # --- Style ------------------------------------------------------------------
 
@@ -45,6 +50,9 @@ NOTIFICATION_MS = 4000
 # with a non-English keyboard layout (for example Russian).
 VK_K = 75
 
+# Virtual event used to pass a hotkey press from the hotkey thread to Tkinter.
+HOTKEY_EVENT = "<<QuickDeskHotkey>>"
+
 TYPE_BY_LABEL = {command_type.label: command_type for command_type in CommandType}
 
 TARGET_HINTS = {
@@ -69,7 +77,14 @@ class Fonts:
 
 
 class QuickDeskApp(ctk.CTk):
-    def __init__(self, store: CommandStore, library: CommandLibrary, startup_warning: str | None = None) -> None:
+    def __init__(
+        self,
+        store: CommandStore,
+        library: CommandLibrary,
+        startup_warning: str | None = None,
+        hotkey: str | None = DEFAULT_HOTKEY,
+        settings_path: Path | None = None,
+    ) -> None:
         super().__init__(fg_color=BG)
         self.store = store
         self.library = library
@@ -79,12 +94,18 @@ class QuickDeskApp(ctk.CTk):
         self.selected = 0
         self._notification_job: str | None = None
         self._last_query = ""
+        self._closing = False
 
         self.title("QuickDesk")
         self.geometry("640x500")
         self.minsize(480, 360)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
+        # The window close button really quits; hiding is done with Esc or the hotkey.
+        self.protocol("WM_DELETE_WINDOW", self.quit_app)
+
+        warnings = [startup_warning] if startup_warning else []
+        self.hotkey = self._start_hotkey(hotkey, settings_path, warnings)
 
         self._build_header()
         self._build_search()
@@ -94,8 +115,8 @@ class QuickDeskApp(ctk.CTk):
 
         self.refresh_results()
         self.after(100, self.focus_search)
-        if startup_warning:
-            self.after(300, lambda: messagebox.showwarning("QuickDesk", startup_warning, parent=self))
+        if warnings:
+            self.after(300, lambda: messagebox.showwarning("QuickDesk", "\n\n".join(warnings), parent=self))
 
     # Layout
 
@@ -146,9 +167,10 @@ class QuickDeskApp(ctk.CTk):
         bar.grid_columnconfigure(0, weight=1)
         self.status_label = ctk.CTkLabel(bar, text="", font=self.fonts.small, text_color=MUTED, anchor="w")
         self.status_label.grid(row=0, column=0, sticky="w")
-        ctk.CTkLabel(
-            bar, text="↑↓ select   Enter open   Esc clear", font=self.fonts.small, text_color=MUTED
-        ).grid(row=0, column=1, sticky="e")
+        hint = "↑↓ select   Enter open   Esc clear"
+        if self.hotkey:
+            hint = f"{self.hotkey.hotkey} show/hide   " + hint.replace("Esc clear", "Esc clear/hide")
+        ctk.CTkLabel(bar, text=hint, font=self.fonts.small, text_color=MUTED).grid(row=0, column=1, sticky="e")
 
     def _bind_keys(self) -> None:
         # These bindings belong to the main window only; dialogs have their own.
@@ -157,7 +179,72 @@ class QuickDeskApp(ctk.CTk):
         self.bind("<KP_Enter>", lambda _event: self.open_selected())
         self.bind("<Up>", lambda _event: self.move_selection(-1))
         self.bind("<Down>", lambda _event: self.move_selection(1))
-        self.bind("<Escape>", lambda _event: self.clear_search())
+        self.bind("<Escape>", lambda _event: self.on_escape())
+        self.bind(HOTKEY_EVENT, lambda _event: self.toggle_window())
+
+    # Global hotkey and window visibility
+
+    def _start_hotkey(
+        self, hotkey: str | None, settings_path: Path | None, warnings: list[str]
+    ) -> GlobalHotkey | None:
+        if not hotkey:
+            return None
+        try:
+            global_hotkey = GlobalHotkey(hotkey, self._on_hotkey_pressed)
+            global_hotkey.start()
+        except HotkeyError as error:
+            message = f"{error}\n\nQuickDesk works without it; open it from the taskbar."
+            if settings_path:
+                message += f'\nTo use another combination, change "hotkey" in {settings_path} and restart QuickDesk.'
+            warnings.append(message)
+            return None
+        return global_hotkey
+
+    def _on_hotkey_pressed(self) -> None:
+        """Called in the hotkey thread. Only hands the event over to Tkinter."""
+        if self._closing:
+            return
+        try:
+            # tkinter forwards calls from other threads to the main loop thread.
+            self.event_generate(HOTKEY_EVENT, when="tail")
+        except (RuntimeError, tk.TclError):
+            pass  # the window is being closed
+
+    def toggle_window(self) -> None:
+        if self.is_active():
+            self.hide_window()
+        else:
+            self.show_window()
+
+    def is_active(self) -> bool:
+        """True if the window is visible and QuickDesk is the active program."""
+        if self.state() != "normal":
+            return False
+        ours = foreground_window_is_ours()
+        if ours is not None:
+            return ours
+        try:
+            return self.focus_get() is not None
+        except (KeyError, tk.TclError):
+            return False
+
+    def show_window(self) -> None:
+        self.deiconify()
+        self.lift()
+        # Being "topmost" for a moment brings the window in front of all others.
+        self.attributes("-topmost", True)
+        self.focus_force()
+        self.focus_search()
+        self.after(150, lambda: self.attributes("-topmost", False))
+
+    def hide_window(self) -> None:
+        self.iconify()
+
+    def quit_app(self) -> None:
+        self._closing = True
+        if self.hotkey:
+            self.hotkey.stop()
+        self.destroy()
 
     # Search and results
 
@@ -235,6 +322,9 @@ class QuickDeskApp(ctk.CTk):
             self.notify(str(error), error=True)
         else:
             self.notify(f"Opened {command.name}")
+            if self.hotkey:
+                # Get out of the way; the hotkey brings QuickDesk back.
+                self.hide_window()
 
     # Keyboard helpers
 
@@ -247,6 +337,12 @@ class QuickDeskApp(ctk.CTk):
     def focus_search(self) -> None:
         self.search_entry.focus_set()
         self.search_entry.select_range(0, "end")
+
+    def on_escape(self) -> None:
+        if self.query or not self.hotkey:
+            self.clear_search()
+        else:
+            self.hide_window()
 
     def clear_search(self) -> None:
         self.search_entry.delete(0, "end")
@@ -565,13 +661,29 @@ def run() -> None:
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
 
+    config_dir = default_config_dir()
     builtins = builtin_commands()
-    store = CommandStore(default_config_dir() / "commands.json", builtins)
+    store = CommandStore(config_dir / "commands.json", builtins)
+    warnings = []
     try:
         result = store.load()
-        commands, warning = result.commands, result.warning
+        commands = result.commands
+        if result.warning:
+            warnings.append(result.warning)
     except StorageError as error:
-        commands, warning = builtins, f"{error}\n\nQuickDesk started with the default commands."
+        commands = builtins
+        warnings.append(f"{error}\n\nQuickDesk started with the default commands.")
+
+    settings_path = config_dir / "settings.json"
+    settings, settings_warning = load_settings(settings_path, DEFAULT_SETTINGS)
+    if settings_warning:
+        warnings.append(settings_warning)
 
     library = CommandLibrary(merge_builtins(commands, builtins))
-    QuickDeskApp(store, library, warning).mainloop()
+    QuickDeskApp(
+        store,
+        library,
+        "\n\n".join(warnings) or None,
+        hotkey=settings["hotkey"],
+        settings_path=settings_path,
+    ).mainloop()

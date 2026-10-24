@@ -22,14 +22,20 @@ It is a learning and portfolio project: the code is kept small, readable and cov
   file or folder, and website.
 - **Input validation**: websites must use `http://` or `https://`; files, folders and programs must exist.
 - **Saved between runs** in `%APPDATA%\QuickDesk\commands.json`.
+- **Global hotkey** `Ctrl+Alt+Space` (configurable): brings QuickDesk to the front from any program
+  with the cursor in the search box; pressing it again while QuickDesk is active minimizes it.
+  After a command is opened, QuickDesk minimizes and keeps running in the background.
 - **Keyboard control**:
 
-  | Key           | Action                                   |
-  |---------------|------------------------------------------|
-  | `Ctrl+K`      | Focus the search box                     |
-  | `Up` / `Down` | Move between results                     |
-  | `Enter`       | Open the selected result                 |
-  | `Escape`      | Clear the search / close an open dialog  |
+  | Key              | Action                                                        |
+  |------------------|---------------------------------------------------------------|
+  | `Ctrl+Alt+Space` | Show QuickDesk from anywhere / minimize it (Windows only)     |
+  | `Ctrl+K`         | Focus the search box                                          |
+  | `Up` / `Down`    | Move between results                                          |
+  | `Enter`          | Open the selected result                                      |
+  | `Escape`         | Clear the search; if it is empty, minimize QuickDesk; in a dialog, close it |
+
+  To quit QuickDesk completely, close the window with the **X** button (or close it from the taskbar).
 
 - Dark, compact interface with small success and error messages at the bottom of the window.
 
@@ -55,10 +61,12 @@ quickdesk/
 │   ├── __init__.py
 │   ├── app.py           # interface: main window, command manager, add/edit dialog
 │   ├── commands.py      # command model, validation, opening commands, built-ins
+│   ├── hotkey.py        # global hotkey (Windows RegisterHotKey via ctypes)
 │   ├── search.py        # search and ranking
 │   └── storage.py       # reading and writing commands.json
 └── tests/
     ├── test_commands.py
+    ├── test_hotkey.py
     ├── test_search.py
     └── test_storage.py
 ```
@@ -94,7 +102,27 @@ python -m unittest discover -s tests
 ```
 
 The tests do not start programs, open websites or touch your real settings: system calls are mocked
-and files are written to temporary folders. The tests do not need CustomTkinter.
+and files are written to temporary folders. The tests do not need CustomTkinter. On Windows, two tests
+register an unused combination (`Ctrl+Alt+Shift+F24`) for a moment to check the real hotkey API;
+no keys are pressed.
+
+## Changing the global hotkey
+
+On first start QuickDesk creates `%APPDATA%\QuickDesk\settings.json`:
+
+```json
+{
+  "hotkey": "Ctrl+Alt+Space"
+}
+```
+
+Change the value and restart QuickDesk. Use one or more of `Ctrl`, `Alt`, `Shift`, `Win` plus a key:
+a letter, a digit, `F1`–`F24`, `Space`, `Enter`, `Tab`, `Home`, `End`, `Insert` or `Delete`
+(for example `Ctrl+Alt+Q` or `Ctrl+Shift+F2`).
+
+If the combination is already taken by another program (or QuickDesk is already running), Windows
+refuses it. QuickDesk then shows a message, keeps working without the hotkey and can be opened from the
+taskbar.
 
 ## Example: adding your own command
 
@@ -147,7 +175,7 @@ The commands file is plain JSON, for example:
   close spelling (`difflib.SequenceMatcher`, only for words of 4+ letters). Matches in the name count
   more than matches in the description or category. See the docstring at the top of `search.py`.
 - **User data outside the source folder.** Commands are stored in `%APPDATA%\QuickDesk\commands.json`.
-  The file is written atomically (temporary file + replace), so a crash while saving cannot leave half
+  The global hotkey is stored separately in `settings.json`. The commands file is written atomically (temporary file + replace), so a crash while saving cannot leave half
   a file. You can set the `QUICKDESK_HOME` environment variable to use another folder, which is handy
   for trying the app without touching your real data.
 - **Damaged settings are never lost silently.** If `commands.json` is not valid, it is renamed to
@@ -157,20 +185,30 @@ The commands file is plain JSON, for example:
   are refreshed from the code. This keeps them correct (for example, the real Downloads location is
   read from Windows, even if you moved the folder) and protects them from accidental changes.
 - **Deleting a command only removes the entry** from `commands.json`. QuickDesk never deletes files.
+- **One registered hotkey instead of a keyboard hook.** `RegisterHotKey` asks Windows to report one
+  combination; QuickDesk never sees other keys and does not poll the keyboard. Windows delivers the
+  event to the thread that registered it, so a small background thread waits in `GetMessageW` and
+  hands each press to Tkinter with `event_generate` (tkinter forwards it to the main thread). The
+  window is only changed from Tkinter's own event loop. On exit the thread receives `WM_QUIT` and
+  calls `UnregisterHotKey`.
+- **Minimize instead of hiding.** QuickDesk minimizes rather than disappearing completely, so it is
+  always visible in the taskbar and can be closed normally even without a tray icon.
 
 ## Limitations of version 0.1
 
 - Windows is the main target. The core modules and tests also run on Linux/macOS, but the built-in
   commands are Windows programs and the interface was checked only on Windows.
-- No global system-wide hotkey: shortcuts work only while the QuickDesk window is active.
+- The global hotkey works only on Windows and only while QuickDesk is running; it is changed in
+  `settings.json`, not in the interface. There is no tray icon and no autostart with Windows.
 - Commands cannot pass arguments to programs (this is intentional for safety).
 - Application commands must be `.exe` files; to open a shortcut (`.lnk`) add it as *File or folder*.
-- The window stays open after a command is opened; there is no tray icon.
 - The interface is in English only.
 
 ## Ideas for the future
 
-- Global hotkey to show/hide the window, and a system tray icon.
+- A system tray icon and an option to start with Windows.
+- Choosing the hotkey in a settings window.
+- Optional hotkeys for individual commands.
 - Show recently or frequently used commands first.
 - Icons for results (extracted from programs and websites).
 - Import commands from Start menu shortcuts.

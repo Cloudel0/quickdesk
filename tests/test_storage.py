@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from quickdesk.commands import Command, CommandType
-from quickdesk.storage import CommandStore, StorageError, default_config_dir, parse_commands
+from quickdesk.storage import CommandStore, StorageError, default_config_dir, load_settings, parse_commands
 
 DEFAULTS = [
     Command("builtin-github", "GitHub", "Code hosting", CommandType.URL, "https://github.com", True),
@@ -129,6 +129,42 @@ class DamagedFileTests(StorageTestCase):
         with self.assertRaises(StorageError):
             self.store.save(DEFAULTS)
         self.assertEqual(self.path.read_text(encoding="utf-8"), "{damaged")
+
+
+class SettingsTests(StorageTestCase):
+    DEFAULTS = {"hotkey": "Ctrl+Alt+Space"}
+
+    def setUp(self):
+        super().setUp()
+        self.settings_path = self.dir / "QuickDesk" / "settings.json"
+
+    def test_missing_file_writes_defaults(self):
+        settings, warning = load_settings(self.settings_path, self.DEFAULTS)
+        self.assertEqual(settings, self.DEFAULTS)
+        self.assertIsNone(warning)
+        self.assertEqual(json.loads(self.settings_path.read_text(encoding="utf-8")), self.DEFAULTS)
+
+    def test_user_value_is_used(self):
+        self.settings_path.parent.mkdir(parents=True)
+        self.settings_path.write_text('{"hotkey": "Ctrl+Alt+Q", "other": 1}', encoding="utf-8")
+        settings, warning = load_settings(self.settings_path, self.DEFAULTS)
+        self.assertEqual(settings, {"hotkey": "Ctrl+Alt+Q"})
+        self.assertIsNone(warning)
+
+    def test_broken_file_is_not_changed(self):
+        self.settings_path.parent.mkdir(parents=True)
+        self.settings_path.write_text("{oops", encoding="utf-8")
+        settings, warning = load_settings(self.settings_path, self.DEFAULTS)
+        self.assertEqual(settings, self.DEFAULTS)
+        self.assertIn("not valid JSON", warning)
+        self.assertEqual(self.settings_path.read_text(encoding="utf-8"), "{oops")
+
+    def test_wrong_value_type_falls_back_to_default(self):
+        self.settings_path.parent.mkdir(parents=True)
+        self.settings_path.write_text('{"hotkey": 42}', encoding="utf-8")
+        settings, warning = load_settings(self.settings_path, self.DEFAULTS)
+        self.assertEqual(settings, self.DEFAULTS)
+        self.assertIn("hotkey", warning)
 
 
 class ConfigDirTests(unittest.TestCase):

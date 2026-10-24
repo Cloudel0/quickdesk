@@ -117,6 +117,51 @@ class CommandStore:
         return candidate
 
 
+def load_settings(path: Path, defaults: dict[str, str]) -> tuple[dict[str, str], str | None]:
+    """Read simple text settings (such as the hotkey) from a JSON object.
+
+    * No file: the defaults are written so the user can find and edit them.
+    * Broken file or wrong values: the file is left untouched, defaults are
+      used for the affected values and a warning is returned.
+    """
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(defaults, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            pass  # not critical: the defaults still work
+        return dict(defaults), None
+    except (OSError, UnicodeDecodeError) as error:
+        return dict(defaults), f"The settings file {path} could not be read ({error}). Default settings are used."
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as error:
+        return dict(defaults), (
+            f"The settings file {path} is not valid JSON ({error.msg} at line {error.lineno}). "
+            f"Default settings are used; the file was not changed."
+        )
+    if not isinstance(data, dict):
+        return dict(defaults), f"The settings file {path} must contain a JSON object. Default settings are used."
+
+    settings = dict(defaults)
+    invalid = []
+    for key in defaults:
+        if key not in data:
+            continue
+        if isinstance(data[key], str):
+            settings[key] = data[key]
+        else:
+            invalid.append(key)
+    warning = None
+    if invalid:
+        warning = f"Invalid values in {path}: {', '.join(invalid)}. Default values are used for them."
+    return settings, warning
+
+
 def parse_commands(text: str) -> list[Command]:
     """Parse the JSON file content. Raises ValueError if the data is invalid."""
     try:
