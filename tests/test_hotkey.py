@@ -14,13 +14,13 @@ from quickdesk.hotkey import (
 )
 
 # An unusual combination, so the test does not clash with real shortcuts
-# (including QuickDesk's own Ctrl+Alt+Space if it is running).
+# (including QuickDesk's own Ctrl+Alt+Q if it is running).
 TEST_HOTKEY = "Ctrl+Alt+Shift+F24"
 
 
 class ParseHotkeyTests(unittest.TestCase):
     def test_default_hotkey(self):
-        self.assertEqual(parse_hotkey(DEFAULT_HOTKEY), (MOD_CONTROL | MOD_ALT, 0x20))
+        self.assertEqual(parse_hotkey(DEFAULT_HOTKEY), (MOD_CONTROL | MOD_ALT, ord("Q")))
 
     def test_is_case_and_space_insensitive(self):
         self.assertEqual(parse_hotkey(" ctrl + ALT + space "), (MOD_CONTROL | MOD_ALT, 0x20))

@@ -22,14 +22,14 @@ It is a learning and portfolio project: the code is kept small, readable and cov
   file or folder, and website.
 - **Input validation**: websites must use `http://` or `https://`; files, folders and programs must exist.
 - **Saved between runs** in `%APPDATA%\QuickDesk\commands.json`.
-- **Global hotkey** `Ctrl+Alt+Space` (configurable): brings QuickDesk to the front from any program
+- **Global hotkey** `Ctrl+Alt+Q` (configurable): brings QuickDesk to the front from any program
   with the cursor in the search box; pressing it again while QuickDesk is active minimizes it.
   After a command is opened, QuickDesk minimizes and keeps running in the background.
 - **Keyboard control**:
 
   | Key              | Action                                                        |
   |------------------|---------------------------------------------------------------|
-  | `Ctrl+Alt+Space` | Show QuickDesk from anywhere / minimize it (Windows only)     |
+  | `Ctrl+Alt+Q`     | Show QuickDesk from anywhere / minimize it (Windows only)     |
   | `Ctrl+K`         | Focus the search box                                          |
   | `Up` / `Down`    | Move between results                                          |
   | `Enter`          | Open the selected result                                      |
@@ -112,13 +112,13 @@ On first start QuickDesk creates `%APPDATA%\QuickDesk\settings.json`:
 
 ```json
 {
-  "hotkey": "Ctrl+Alt+Space"
+  "hotkey": "Ctrl+Alt+Q"
 }
 ```
 
 Change the value and restart QuickDesk. Use one or more of `Ctrl`, `Alt`, `Shift`, `Win` plus a key:
 a letter, a digit, `F1`–`F24`, `Space`, `Enter`, `Tab`, `Home`, `End`, `Insert` or `Delete`
-(for example `Ctrl+Alt+Q` or `Ctrl+Shift+F2`).
+(for example `Ctrl+Alt+Space` or `Ctrl+Shift+F2`).
 
 If the combination is already taken by another program (or QuickDesk is already running), Windows
 refuses it. QuickDesk then shows a message, keeps working without the hotkey and can be opened from the

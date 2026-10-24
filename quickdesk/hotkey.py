@@ -19,7 +19,7 @@ import sys
 import threading
 from typing import Callable
 
-DEFAULT_HOTKEY = "Ctrl+Alt+Space"
+DEFAULT_HOTKEY = "Ctrl+Alt+Q"
 
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
