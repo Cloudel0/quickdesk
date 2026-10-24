@@ -69,7 +69,7 @@ quickdesk/
 2. Clone the repository and open the folder:
 
    ```powershell
-   git clone https://github.com/<your-username>/quickdesk.git
+   git clone https://github.com/Cloudel0/quickdesk.git
    cd quickdesk
    ```
 
